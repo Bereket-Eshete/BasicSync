@@ -14,9 +14,7 @@ import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.net.Uri
 import android.os.BatteryManager
-import android.os.Build
 import android.provider.DocumentsContract
-import android.provider.Settings
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -205,14 +203,12 @@ fun SettingsScreen(
         }
     }
 
-    var missingLocal by rememberSaveable { mutableStateOf(false) }
     var missingSaf by rememberSaveable { mutableStateOf(emptyList<Uri>()) }
     var conflicts by rememberSaveable { mutableIntStateOf(0) }
 
     val watcher = rememberServiceEventWatcher(
         listener = object : SyncthingService.ServiceListener {
             override fun onMissingStoragePermissions(local: Boolean, saf: List<Uri>) {
-                missingLocal = local
                 missingSaf = saf
             }
 
@@ -323,7 +319,6 @@ fun SettingsScreen(
             notificationsGranted = notificationsGranted,
             localNetworkGranted = localNetworkGranted,
             appHibernationDisabled = appHibernationDisabled,
-            missingLocalStorage = missingLocal,
             missingSafStorage = missingSaf,
             conflicts = conflicts,
             isManualMode = isManualMode,
@@ -357,20 +352,6 @@ fun SettingsScreen(
                         context.packageName,
                     )
                 )
-            },
-            onLocalStorageGrant = {
-                storagePermissionRequest = true
-
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    val intent = Intent(
-                        Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
-                        "package:${BuildConfig.APPLICATION_ID}".toUri(),
-                    )
-
-                    requestPermissionActivity.launch(intent)
-                } else {
-                    requestPermissionsRequired.launch(Permissions.LEGACY_STORAGE)
-                }
             },
             onSafStorageGrant = { uri ->
                 // DocumentsUI does not support tree URIs for EXTRA_INITIAL_URI.
@@ -573,7 +554,6 @@ private fun SettingsContent(
     notificationsGranted: Boolean,
     localNetworkGranted: Boolean,
     appHibernationDisabled: Boolean,
-    missingLocalStorage: Boolean,
     missingSafStorage: List<Uri>,
     conflicts: Int,
     isManualMode: Boolean,
@@ -595,7 +575,6 @@ private fun SettingsContent(
     onNotificationsGrant: () -> Unit,
     onLocalNetworkGrant: () -> Unit,
     onAppHibernationDisable: () -> Unit,
-    onLocalStorageGrant: () -> Unit,
     onSafStorageGrant: (Uri) -> Unit,
     onConflictsOpen: () -> Unit,
     onWebUiOpen: () -> Unit,
@@ -660,14 +639,6 @@ private fun SettingsContent(
                 title = stringResource(R.string.pref_disable_app_hibernation_name),
                 summary = stringResource(R.string.pref_disable_app_hibernation_desc),
                 onGrant = onAppHibernationDisable,
-            ))
-        }
-        if (missingLocalStorage) {
-            add(MissingPermission(
-                key = "missing_local",
-                title = stringResource(R.string.pref_local_storage_access_name),
-                summary = stringResource(R.string.pref_local_storage_access_desc),
-                onGrant = onLocalStorageGrant,
             ))
         }
         for (uri in missingSafStorage) {
@@ -755,8 +726,8 @@ private fun SettingsContent(
                 } else {
                     BetterSegmentedShapes.top()
                 },
-                title = { Text(text = stringResource(R.string.pref_open_web_ui_name)) },
-                summary = { Text(text = stringResource(R.string.pref_open_web_ui_desc)) },
+                title = { Text(text = stringResource(R.string.pref_manage_vaults_name)) },
+                summary = { Text(text = stringResource(R.string.pref_manage_vaults_desc)) },
                 modifier = Modifier.animateItem(),
             )
         }
@@ -1127,7 +1098,6 @@ private fun PreviewSettingsScreen() {
                 notificationsGranted = false,
                 localNetworkGranted = false,
                 appHibernationDisabled = false,
-                missingLocalStorage = true,
                 missingSafStorage = listOf("content://${DOCUMENTSUI_AUTHORITY}/tree/primary%3afile".toUri()),
                 conflicts = 1,
                 isManualMode = false,
@@ -1149,7 +1119,6 @@ private fun PreviewSettingsScreen() {
                 onNotificationsGrant = {},
                 onLocalNetworkGrant = {},
                 onAppHibernationDisable = {},
-                onLocalStorageGrant = {},
                 onSafStorageGrant = {},
                 onConflictsOpen = {},
                 onWebUiOpen = {},

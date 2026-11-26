@@ -112,7 +112,7 @@ val gitVersionTriple = describeVersion(git)
 val gitVersionCode = getVersionCode(gitVersionTriple)
 val gitVersionName = getVersionName(git, gitVersionTriple)
 
-val projectUrl = "https://github.com/chenxiaolong/BasicSync"
+val projectUrl = "https://github.com/Bereket-Eshete/BasicSync"
 
 val extraDir = layout.buildDirectory.map { it.dir("extra") }
 val archiveDir = extraDir.map { it.dir("archive") }
@@ -140,13 +140,13 @@ android {
     ndkVersion = "30.0.16248370"
 
     defaultConfig {
-        applicationId = "com.chiller3.basicsync"
+        applicationId = "io.github.bereketeshete.vaultsync"
         minSdk = 26
         targetSdk = 37
         versionCode = gitVersionCode
         versionName = gitVersionName
 
-        base.archivesName.set("BasicSync-$versionName")
+        base.archivesName.set("VaultSync-$versionName")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 

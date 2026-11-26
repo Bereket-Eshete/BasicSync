@@ -18,6 +18,7 @@ import (
 	"log"
 	"net"
 	_ "net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -894,6 +895,38 @@ func startEventLoop(
 	return nil
 }
 
+// vaultStoragePolicy rejects direct file paths before Syncthing can scan a folder.
+type vaultStoragePolicy struct{}
+
+func (vaultStoragePolicy) String() string { return "Vault folder storage policy" }
+
+func (vaultStoragePolicy) CommitConfiguration(_, _ config.Configuration) bool { return true }
+
+func (vaultStoragePolicy) VerifyConfiguration(_, next config.Configuration) error {
+	return validateVaultFolders(next)
+}
+
+func validateVaultFolders(cfg config.Configuration) error {
+	for _, folder := range cfg.Folders {
+		if folder.FilesystemType != config.FilesystemType(filesystemTypeSaf) {
+			return fmt.Errorf("folder %q must be selected with Android's folder picker", folder.ID)
+		}
+		tree, _, _ := strings.Cut(folder.Path, safPathSeparator)
+		decoded, err := url.QueryUnescape(tree)
+		if err != nil {
+			return fmt.Errorf("folder %q has an invalid Android folder URI: %w", folder.ID, err)
+		}
+		uri, err := url.Parse(decoded)
+		if err != nil || uri.Scheme != "content" || uri.Host == "" || !strings.HasPrefix(uri.Path, "/tree/") {
+			return fmt.Errorf("folder %q must be selected with Android's folder picker", folder.ID)
+		}
+		if folder.Versioning.FSPath != "" || folder.Versioning.Type == "external" {
+			return fmt.Errorf("folder %q must store versions inside the selected folder", folder.ID)
+		}
+	}
+	return nil
+}
+
 func checkStoragePermissions(
 	cfg config.Configuration,
 	receiver SyncthingStatusReceiver,
@@ -959,6 +992,11 @@ func Run(startup *SyncthingStartupConfig) error {
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
+	policy := vaultStoragePolicy{}
+	if err := validateVaultFolders(cfg.Subscribe(policy)); err != nil {
+		return err
+	}
+	defer cfg.Unsubscribe(policy)
 	go cfg.Serve(ctx)
 
 	if err := checkStoragePermissions(cfg.RawCopy(), startup.Receiver); err != nil {
@@ -1011,6 +1049,7 @@ func Run(startup *SyncthingStartupConfig) error {
 
 		// /sdcard does not support permissions.
 		c.Defaults.Folder.IgnorePerms = true
+		c.Defaults.Folder.FilesystemType = config.FilesystemType(filesystemTypeSaf)
 
 		for _, folder := range c.Folders {
 			folder.IgnorePerms = true
@@ -1222,6 +1261,22 @@ func ImportConfiguration(fd int, name string, password string) error {
 		if err := extractEntry(f); err != nil {
 			return err
 		}
+	}
+
+	configFile, err := os.Open(filepath.Join(tempDir, filepath.Base(locations.Get(locations.ConfigFile))))
+	if err != nil {
+		return fmt.Errorf("failed to read imported configuration: %w", err)
+	}
+	imported, _, readErr := config.ReadXML(configFile, protocol.DeviceID{})
+	closeErr := configFile.Close()
+	if readErr != nil {
+		return fmt.Errorf("failed to read imported configuration: %w", readErr)
+	}
+	if closeErr != nil {
+		return fmt.Errorf("failed to close imported configuration: %w", closeErr)
+	}
+	if err := validateVaultFolders(imported); err != nil {
+		return err
 	}
 
 	configDir := locations.GetBaseDir(locations.ConfigBaseDir)

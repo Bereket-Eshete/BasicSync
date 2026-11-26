@@ -1,4 +1,23 @@
-# BasicSync
+# Vault Sync
+
+Vault Sync is a fork of [BasicSync](https://github.com/chenxiaolong/BasicSync) for
+syncing Obsidian vaults with Syncthing. Choose each vault separately with the
+Android folder picker. The app can sync multiple vaults and does not request
+All files access.
+
+On your PC, share a Syncthing folder with the phone. In Vault Sync, open
+**Manage vaults and devices**, accept the shared folder, and use the folder button to choose a dedicated
+directory such as `Documents/Notes`. Open that directory as a vault in Obsidian.
+Repeat for each vault you want to sync.
+
+Try both directions on a throwaway vault first. Enable Syncthing file versioning
+on the receiving device to keep copies of files that the other device changes or
+deletes. Vault Sync stores those copies inside the selected folder.
+
+The build and setup details below come from upstream BasicSync. Direct file
+access is unavailable in this fork.
+
+## About BasicSync
 
 <img src="app/images/icon.svg" alt="app icon" width="72" />
 
@@ -55,8 +74,6 @@ The app is intentionally kept very basic so that the project is easy to maintain
     * Used for detecting if Android's auto-sync data setting is enabled.
 * `ACCESS_NETWORK_STATE`
     * Used for detecting when the device is connected to the network and if the network is unmetered.
-* `MANAGE_EXTERNAL_STORAGE` (Android >=11), `READ_EXTERNAL_STORAGE`/`WRITE_EXTERNAL_STORAGE` (Android <11)
-    * Optionally used for accessing internal and external storage when a folder is configured for direct file access instead of using Android's [storage access framework](#storage-access-framework).
 * `RECEIVE_BOOT_COMPLETED`
     * Needed for automatically starting Syncthing after a reboot.
     * Autostart can be disabled from BasicSync's settings if desired.
@@ -80,11 +97,9 @@ For basic authentication, the default password is the API token. Changing the pa
 
 ## Storage access framework
 
-**For GrapheneOS users**: Use the OS-level storage scopes feature instead. It allows direct file access without the limitations of Android's storage access framework described below.
-
-BasicSync supports file access via Android's storage access framework (SAF) as an alternative to direct file access. This limits permissions so that Syncthing only has access to specific folders instead of all internal and external storage.
-
-However, despite not having granular permissions, using direct file access is still recommended. SAF is discouraged because it is not well suited for how Syncthing accesses files.
+Vault Sync uses Android's storage access framework (SAF) for all shared folders.
+Each folder is accessible after you grant access in the system picker. The
+BasicSync bridge has the following limitations.
 
 * Accessing files by path is extremely inefficient. For example, it is not possible to directly access a nested file like `a/b/c`. Instead, Android will list every file in `a` and `b` and query their metadata before `c` is accessible. To reduce the impact of this, BasicSync caches directory listings and file metadata, but it will still be significantly slower than internal storage.
 

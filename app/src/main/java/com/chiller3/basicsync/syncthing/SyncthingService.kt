@@ -27,7 +27,6 @@ import androidx.core.app.ServiceCompat
 import androidx.core.net.toUri
 import com.chiller3.basicsync.BuildConfig
 import com.chiller3.basicsync.Notifications
-import com.chiller3.basicsync.Permissions
 import com.chiller3.basicsync.Preferences
 import com.chiller3.basicsync.binding.stbridge.Stbridge
 import com.chiller3.basicsync.binding.stbridge.SyncthingApp
@@ -940,21 +939,6 @@ class SyncthingService : Service(), SyncthingStatusReceiver, DeviceStateListener
     }
 
     override fun onCheckStoragePermissions(local0Sep: String, saf0Sep: String) {
-        // We don't need to request permissions if the configured local directories are just the
-        // external app directories. There's no way to select these directories via the UI, but the
-        // user can still type them in.
-        val noPermDirs = getExternalFilesDirs(null)
-        var localRequiresPerms = false
-
-        for (path in unpack0Sep(local0Sep)) {
-            val file = File(path).expandTilde().normalize()
-
-            if (!noPermDirs.any(file::startsWith)) {
-                localRequiresPerms = true
-                break
-            }
-        }
-
         val saf = mutableSetOf<Uri>()
 
         for (encoded in unpack0Sep(saf0Sep)) {
@@ -990,7 +974,7 @@ class SyncthingService : Service(), SyncthingStatusReceiver, DeviceStateListener
 
         synchronized(stateLock) {
             recheckPermissions = false
-            missingLocal = localRequiresPerms && !Permissions.haveLocalStorage(this)
+            missingLocal = local0Sep.isNotEmpty()
             missingSaf = saf.sorted()
 
             allListeners {
@@ -999,12 +983,8 @@ class SyncthingService : Service(), SyncthingStatusReceiver, DeviceStateListener
 
             stateChanged(recomputeBlockedReasons = true)
 
-            // We intentionally block on missing local storage permissions only. If a SAF URI is
-            // inaccessible, Syncthing will completely lose access to it. However, if the local
-            // storage permission is denied, folders are still visible, so Syncthing thinks
-            // everything was deleted.
             if (missingLocal) {
-                throw SecurityException("Missing local storage permissions")
+                throw SecurityException("Only folders selected with Android's folder picker are supported")
             }
         }
     }

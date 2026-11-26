@@ -16,7 +16,6 @@ import android.net.http.SslError
 import android.os.Build
 import android.os.Environment
 import android.provider.DocumentsContract
-import android.provider.Settings
 import android.util.Base64
 import android.util.Log
 import android.view.ViewGroup
@@ -58,8 +57,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.net.toUri
 import androidx.lifecycle.compose.LifecycleResumeEffect
-import com.chiller3.basicsync.BuildConfig
-import com.chiller3.basicsync.Permissions
 import com.chiller3.basicsync.R
 import com.chiller3.basicsync.extension.DOCUMENTSUI_AUTHORITY
 import com.chiller3.basicsync.extension.DOCUMENTSUI_PRIMARY_ID
@@ -214,100 +211,13 @@ fun WebUiScreen(
         }
     }
 
-    // The dialogs intentionally do not use rememberSaveable because the WebView would reload anyway
-    // if the Activity was recreated.
-    var showStorageTypeDialog by remember { mutableStateOf(false) }
-    var showFolderPickerDialog by remember { mutableStateOf<FolderPickerLocation?>(null) }
-    var existingFolderPath by remember { mutableStateOf<String?>(null) }
-
-    fun showFolderPicker(alwaysClearExisting: Boolean): Boolean {
-        val havePermissions = Permissions.haveLocalStorage(context)
-
-        if (havePermissions) {
-            showFolderPickerDialog = existingFolderPath
-                ?.let(FolderPickerLocation::Path)
-                ?: FolderPickerLocation.Default
-        }
-
-        if (havePermissions || alwaysClearExisting) {
-            existingFolderPath = null
-        }
-
-        return havePermissions
-    }
-
-    val requestPermissionActivity = rememberLauncherForActivityResult(
-        ActivityResultContracts.StartActivityForResult(),
-    ) {
-        showFolderPicker(true)
-    }
-
-    val requestPermissionsRequired = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions(),
-    ) { granted ->
-        if (granted.all { it.value }) {
-            showFolderPicker(true)
-        } else {
-            requestPermissionActivity.launch(Permissions.getAppInfoIntent(context))
-        }
-    }
-
     val requestSafTree = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocumentTree()
     ) { uri ->
         uri?.let {
             SyncthingService.persistSafPermissions(context, it)
-
             onFolderSelected("saf", SyncthingService.encodeSafUri(it))
         }
-
-        existingFolderPath = null
-    }
-
-    if (showStorageTypeDialog) {
-        StorageChoiceDialog(
-            onSelect = { type ->
-                when (type) {
-                    StorageChoice.LOCAL -> {
-                        if (showFolderPicker(false)) {
-                            // Already have permissions.
-                        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                            val intent = Intent(
-                                Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
-                                "package:${BuildConfig.APPLICATION_ID}".toUri(),
-                            )
-
-                            requestPermissionActivity.launch(intent)
-                        } else {
-                            requestPermissionsRequired.launch(Permissions.LEGACY_STORAGE)
-                        }
-                    }
-                    StorageChoice.SAF -> {
-                        requestSafTree.launch(existingFolderPath?.toUri())
-                        existingFolderPath = null
-                    }
-                }
-
-                showStorageTypeDialog = false
-            },
-            onDismiss = {
-                showStorageTypeDialog = false
-                existingFolderPath = null
-            },
-        )
-    }
-
-    showFolderPickerDialog?.let { location ->
-        FolderPickerDialog(
-            initialLocation = location,
-            onSelect = { shortPath ->
-                onFolderSelected("basic", shortPath)
-                showFolderPickerDialog = null
-            },
-            onDismiss = {
-                showFolderPickerDialog = null
-            },
-        )
     }
 
     @Suppress("unused")
@@ -322,25 +232,24 @@ fun WebUiScreen(
 
             @JavascriptInterface
             fun openFolderPicker(filesystemType: String, path: String) {
-                showStorageTypeDialog = true
-
-                if (path.isNotEmpty()) {
-                    when (filesystemType) {
-                        "basic" -> existingFolderPath = path
-                        "saf" -> {
-                            // DocumentsUI does not support tree URIs for EXTRA_INITIAL_URI.
+                webView.post {
+                    val initialUri = if (filesystemType == "saf" && path.isNotEmpty()) {
+                        try {
+                            // DocumentsUI expects a document URI, not a tree URI.
                             val treeUri = SyncthingService.decodeSafUri(path).first
-                            try {
-                                existingFolderPath = DocumentsContract.buildDocumentUri(
-                                    treeUri.authority,
-                                    SyncthingSafClient.getNarrowestDocumentId(treeUri),
-                                ).toString()
-                            } catch (e: IllegalArgumentException) {
-                                Log.w(TAG, "Invalid initial URI: $treeUri", e)
-                            }
+                            DocumentsContract.buildDocumentUri(
+                                treeUri.authority,
+                                SyncthingSafClient.getNarrowestDocumentId(treeUri),
+                            )
+                        } catch (e: IllegalArgumentException) {
+                            Log.w(TAG, "Invalid initial folder URI", e)
+                            null
                         }
-                        else -> Log.w(TAG, "Ignoring unrecognized filesystem type: $filesystemType")
+                    } else {
+                        null
                     }
+
+                    requestSafTree.launch(initialUri)
                 }
             }
 

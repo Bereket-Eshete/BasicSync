@@ -9,6 +9,7 @@ import (
 	"errors"
 	"log"
 	"maps"
+	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -18,9 +19,44 @@ import (
 	"testing"
 	"time"
 
+	"github.com/syncthing/syncthing/lib/config"
 	"github.com/syncthing/syncthing/lib/fs"
 	"github.com/syncthing/syncthing/lib/ignore/ignoreresult"
 )
+
+func TestVaultStoragePolicy(t *testing.T) {
+	folder := func(id string) config.FolderConfiguration {
+		return config.FolderConfiguration{
+			ID:             id,
+			FilesystemType: config.FilesystemType(filesystemTypeSaf),
+			Path:           url.QueryEscape("content://com.android.externalstorage.documents/tree/primary:Documents/" + id),
+		}
+	}
+
+	vaults := config.Configuration{Folders: []config.FolderConfiguration{folder("Notes"), folder("Work")}}
+	if err := (vaultStoragePolicy{}).VerifyConfiguration(config.Configuration{}, vaults); err != nil {
+		t.Fatalf("two selected vaults were rejected: %v", err)
+	}
+
+	for _, test := range []struct {
+		name string
+		edit func(*config.FolderConfiguration)
+	}{
+		{"direct filesystem", func(f *config.FolderConfiguration) { f.FilesystemType = config.FilesystemTypeBasic }},
+		{"ordinary path with SAF type", func(f *config.FolderConfiguration) { f.Path = "/storage/emulated/0/Documents" }},
+		{"empty SAF root", func(f *config.FolderConfiguration) { f.Path = "" }},
+		{"version path outside the selected folder", func(f *config.FolderConfiguration) { f.Versioning.FSPath = "/tmp" }},
+		{"external versioner", func(f *config.FolderConfiguration) { f.Versioning.Type = "external" }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			config := vaults.Copy()
+			test.edit(&config.Folders[1])
+			if err := (vaultStoragePolicy{}).VerifyConfiguration(vaults, config); err == nil {
+				t.Fatal("invalid folder was accepted")
+			}
+		})
+	}
+}
 
 func TestSafePath(t *testing.T) {
 	for _, i := range []struct {
