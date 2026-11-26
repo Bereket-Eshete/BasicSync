@@ -6,7 +6,6 @@
 import com.android.build.api.variant.FilterConfiguration
 import com.android.build.gradle.internal.UsesSdkComponentsBuildService
 import com.android.build.gradle.internal.dsl.SdkComponentsImpl
-import com.android.repository.Revision
 import java.io.ByteArrayOutputStream
 import org.eclipse.jgit.api.ArchiveCommand
 import org.eclipse.jgit.api.Git
@@ -485,17 +484,9 @@ val stbridgeRaw = tasks.register("stbridgeRaw") {
         )
         ndkHandler.getNdkPlatform(downloadOkay = true)
 
-        // Query for the path to android.jar. This forces the SdkFullLoadingStrategy to initialize,
-        // which calls SdkHandler.initTarget(), which calls DefaultSdkLoader.getTargetInfo(), which
-        // installs missing SDK components. Like the NDK installation above, this is hacky, but
-        // works well enough.
-        sdkComponentsBuildService
-            .sdkLoader(
-                project.provider { "android-${android.compileSdk}" },
-                project.provider { Revision.parseRevision(android.buildToolsVersion) },
-            )
-            .androidJarProvider
-            .get()
+        // Resolve the same SDK platform as Kotlin and Java compilation. Recent platforms have a
+        // minor API level in their target hash (for example, android-37.0).
+        sdkComponents.bootClasspath.get()
     }
 
     val tempDir = stbridgeDir.map { it.dir("temp") }
